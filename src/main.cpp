@@ -255,7 +255,6 @@ int main() {
 			bool prepare_too_pass = false;
 			double target_vel = 49.5; // the maximal allowed speed
 
-			// find ref_v to use
 			for (int i=0; i< sensor_fusion.size(); i++)
 			{
 				// car is in my lane
@@ -273,8 +272,9 @@ int main() {
 					{	// if we are too close we need to break
 						too_close = true;
 						prepare_too_pass = true;
+						target_vel = check_speed;
 						cout << "TOO CLOSE!!!!!\n";
-						ref_vel -= .45; // add some negative accelration for emergency break
+						ref_vel -= .5; // add some negative accelration for emergency break
 						break;
 					}
 					else if ((check_car_s > car_s) && ((check_car_s - car_s) < 30))
@@ -284,21 +284,125 @@ int main() {
 						cout << "TAILGATING AT "<<target_vel <<"\n";
 						break;
 					}
-					// else
-					// {
-					// 	cout << "OPEN ROAD!!!!!\n";
-					// }
 				}
 			}
-
-			if ((too_close) || (ref_vel > target_vel*0.98))
+			
+			// adjusting the car speed
+			if ((too_close) || (ref_vel > target_vel))
 			{
 				ref_vel -= .15;
 			}
-			else if (ref_vel < target_vel*0.98)
+			else if (ref_vel < target_vel)
 			{
-				if (ref_vel < 10){ref_vel += 0.3;} // extra acceleration for begining of drive
+				if (ref_vel < 10){ref_vel += 0.4;} // extra acceleration for begining of drive
+				else if (ref_vel > 48){ref_vel -= 0.45;} // reduce accelaration if close to maximal speed allowed
 				ref_vel += .6;
+			}
+
+			// setting the lane changing logic
+			if (prepare_too_pass)
+			{
+				if ((lane == 0) || (lane == 2)) // if on the side lane the only possible target is the middle lane
+				{
+					bool better_speed = true;
+					bool free_to_go = true;
+					for (int i=0; i< sensor_fusion.size(); i++)
+					{
+						float d = sensor_fusion[i][6]; 
+						if (d < (2+4*1 +2) && d > (2+4*1-2)) // cars in the middle lane
+						{
+							double vx = sensor_fusion[i][3];
+							double vy = sensor_fusion[i][4];
+							double check_speed = sqrt(vx*vx + vy*vy);
+							double check_car_s = sensor_fusion[i][5];
+							check_car_s += ((double)prev_size*0.02*check_speed); // car future location
+
+							if ((check_car_s > car_s) && (check_car_s < car_s+90) && (check_speed <= target_vel))
+							{
+								better_speed = false;
+								cout << "No better lane!!!!!\n";
+								break;
+							}
+							else if ((check_car_s > car_s-3) && (check_car_s < car_s+2))
+							{
+								free_to_go = false;
+								cout << "No space for pass!!!!!\n";
+								break;
+							}
+						}
+					}
+					if ((better_speed) && (free_to_go)) { lane = 1; }
+				}
+
+				else if (lane == 1)
+				{
+					float right_lane_speed = 49.4;
+					float left_lane_speed = 49.3;
+					for (int i=0; i< sensor_fusion.size(); i++)
+					{
+						
+						float d = sensor_fusion[i][6]; 
+						if (d < (2+4*0 +2) && d > (2+4*0-2)) // cars on left lane
+						{
+							double vx = sensor_fusion[i][3];
+							double vy = sensor_fusion[i][4];
+							double check_speed = sqrt(vx*vx + vy*vy);
+							double check_car_s = sensor_fusion[i][5];
+							check_car_s += ((double)prev_size*0.02*check_speed); // car future location
+
+							if ((check_car_s > car_s) && (check_car_s < car_s+90) && (check_speed <= target_vel))
+							{
+								left_lane_speed = 0;
+								cout << "Left lane slower!!!!!\n";
+							}
+							else if ((check_car_s > car_s-3) && (check_car_s < car_s+2))
+							{
+								left_lane_speed = 0;
+								cout << "No space for pass on left!!!!!\n";
+							}
+							else if ((check_car_s > car_s+5) && (check_car_s > car_s+90) && (check_speed < left_lane_speed))
+							{
+								left_lane_speed = check_speed;
+							}
+						}
+						if (d < (2+4*2 +2) && d > (2+4*2-2)) // cars on right lane
+						{
+							double vx = sensor_fusion[i][3];
+							double vy = sensor_fusion[i][4];
+							double check_speed = sqrt(vx*vx + vy*vy);
+							double check_car_s = sensor_fusion[i][5];
+							check_car_s += ((double)prev_size*0.02*check_speed); // car future location
+
+							if ((check_car_s > car_s) && (check_car_s < car_s+90) && (check_speed <= target_vel))
+							{
+								right_lane_speed = 0;
+								cout << "Right lane slower!!!!!\n";
+							}
+							else if ((check_car_s > car_s-3) && (check_car_s < car_s+2))
+							{
+								right_lane_speed = 0;
+								cout << "No space for pass on right!!!!!\n";
+							}
+							else if ((check_car_s > car_s+5) && (check_car_s > car_s+90) && (check_speed < right_lane_speed))
+							{
+								right_lane_speed = check_speed;
+							}
+						}
+					}
+					if ((right_lane_speed > left_lane_speed) && (right_lane_speed > target_vel)) 
+					{ 
+						lane = 2;
+						cout << "TURNING RIGHT!!!!!!!!!!!!!!!!!!!!!!\n"; 
+					}
+					else if ((left_lane_speed > right_lane_speed) && (left_lane_speed > target_vel)) 
+					{ 
+						lane = 0;
+						cout << "TURNING LEFT!!!!!!!!!!!!!!!!!!!!!!\n"; 
+					}
+				}
+				
+				
+				
 			}
 
           	json msgJson;
@@ -343,7 +447,7 @@ int main() {
 			}
 
 			// In Fernet add evenly 30m spaced points ahead of the starting reference
-			vector<double> next_wp0 = getXY(car_s + 25, (2 + 4 * lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+			vector<double> next_wp0 = getXY(car_s + 27, (2 + 4 * lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
 			vector<double> next_wp1 = getXY(car_s + 60, (2 + 4 * lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
 			vector<double> next_wp2 = getXY(car_s + 90, (2 + 4 * lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
 

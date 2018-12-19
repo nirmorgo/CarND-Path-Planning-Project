@@ -249,6 +249,7 @@ int main() {
 			if (prev_size > 0)
 			{
 				car_s = end_path_s;
+				car_d = end_path_d;
 			}
 
 			bool too_close = false;
@@ -274,7 +275,7 @@ int main() {
 						prepare_too_pass = true;
 						target_vel = check_speed;
 						cout << "TOO CLOSE!!!!!\n";
-						ref_vel -= .5; // add some negative accelration for emergency break
+						ref_vel -= .6; // add some negative accelration for emergency break
 						break;
 					}
 					else if ((check_car_s > car_s) && ((check_car_s - car_s) < 30))
@@ -302,6 +303,7 @@ int main() {
 			// setting the lane changing logic
 			if (prepare_too_pass)
 			{
+				// set slightly different initial values so the speed will never be equal.
 				float lane2_speed = 49.4;
 				bool lane2_free = true;
 				float lane1_speed = 49.41;
@@ -319,7 +321,7 @@ int main() {
 
 					if (d < (2+4*0 +2) && d > (2+4*0-2)) // cars on left lane
 					{
-						if ((check_car_s > car_s-5) && (check_car_s < car_s+2))
+						if ((check_car_s > car_s-7) && (check_car_s < car_s+4))
 						{
 							lane0_free = false;
 						}
@@ -331,7 +333,7 @@ int main() {
 					}
 					else if (d < (2+4*1 +2) && d > (2+4*1-2)) // cars on middle lane
 					{
-						if ((check_car_s > car_s-5) && (check_car_s < car_s+2))
+						if ((check_car_s > car_s-7) && (check_car_s < car_s+4))
 						{
 							lane1_free = false;
 						}
@@ -343,7 +345,7 @@ int main() {
 					}
 					else if (d < (2+4*2 +2) && d > (2+4*2-2)) // cars on right lane
 					{
-						if ((check_car_s > car_s-5) && (check_car_s < car_s+2))
+						if ((check_car_s > car_s-7) && (check_car_s < car_s+4))
 						{
 							lane2_free = false;
 						}
@@ -356,7 +358,7 @@ int main() {
 				}
 				if (lane == 0)
 				{
-					if (((lane1_speed > lane0_speed) || (lane2_speed > lane0_speed)) && (lane1_free))
+					if (((lane1_speed > lane0_speed) || ((lane2_speed > lane0_speed) && (lane2_free))) && (lane1_free))
 					{
 						lane = 1;
 						cout << "TURNING RIGHT!!!!!!!!!!!!!!!!!!!!!!\n"; 
@@ -369,7 +371,7 @@ int main() {
 				}
 				else if (lane == 2)
 				{
-					if (((lane1_speed > lane2_speed) || (lane0_speed > lane2_speed)) && (lane1_free))
+					if (((lane1_speed > lane2_speed) || ((lane0_speed > lane2_speed) && (lane2_free))) && (lane1_free))
 					{
 						lane = 1;
 						cout << "TURNING LEFT!!!!!!!!!!!!!!!!!!!!!!\n"; 

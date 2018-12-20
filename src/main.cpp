@@ -216,7 +216,9 @@ int main() {
     //cout << sdata << endl;
     if (length && length > 2 && data[0] == '4' && data[1] == '2') {
 
-      auto s = hasData(data);
+      // cout << "driving speed: " << ref_vel  << '\n';
+			
+			auto s = hasData(data);
 
       if (s != "") {
         auto j = json::parse(s);
@@ -255,6 +257,7 @@ int main() {
 			bool too_close = false;
 			bool prepare_too_pass = false;
 			double target_vel = 49.5; // the maximal allowed speed
+			double safe_distance = 15;
 
 			for (int i=0; i< sensor_fusion.size(); i++)
 			{
@@ -269,46 +272,53 @@ int main() {
 
 					// check if using the projected current route we might collide with the vehicle
 					check_car_s += ((double)prev_size*0.02*check_speed);
-					if ((check_car_s > car_s) && ((check_car_s - car_s) < 10))
+					if ((check_car_s > car_s) && ((check_car_s - car_s) < safe_distance))
 					{	// if we are too close we need to break
 						too_close = true;
 						prepare_too_pass = true;
 						target_vel = check_speed;
 						cout << "TOO CLOSE!!!!!\n";
-						ref_vel -= .6; // add some negative accelration for emergency break
 						break;
 					}
 					else if ((check_car_s > car_s) && ((check_car_s - car_s) < 30))
 					{	// going into tailgate mode with same velocity as car ahead if in safe distance
 						prepare_too_pass = true;
-						target_vel = check_speed * 1.1;
+						target_vel = check_speed * 2.23;
 						cout << "TAILGATING AT "<<target_vel <<"\n";
 						break;
 					}
 				}
 			}
 			
+			// make a spline for smooth acceleration
+			vector<double> speeds {0.0, 5, 20, 30, 40, 45, 48, 49};
+			vector<double> acc {1, 0.9, 0.7, 0.6, 0.4, 0.25, 0.2, 0.1};
+			tk::spline a;
+			a.set_points(speeds, acc);
+			
 			// adjusting the car speed
-			if ((too_close) || (ref_vel > target_vel))
+			if (too_close)
 			{
-				ref_vel -= .15;
+				ref_vel -= 1.0;
+			}
+			else if (ref_vel > target_vel)
+			{
+				ref_vel -= a(ref_vel);
 			}
 			else if (ref_vel < target_vel)
 			{
-				if (ref_vel < 10){ref_vel += 0.4;} // extra acceleration for begining of drive
-				else if (ref_vel > 48){ref_vel -= 0.45;} // reduce accelaration if close to maximal speed allowed
-				ref_vel += .6;
+				ref_vel += a(ref_vel);
 			}
 
 			// setting the lane changing logic
 			if (prepare_too_pass)
 			{
-				// set slightly different initial values so the speed will never be equal.
-				float lane2_speed = 49.4;
+				// set slightly different initial values in m/s
+				float lane2_speed = 49.8 / 2.23;
 				bool lane2_free = true;
-				float lane1_speed = 49.41;
+				float lane1_speed = 49.8 / 2.23;
 				bool lane1_free = true;
-				float lane0_speed = 49.39;
+				float lane0_speed = 49.8 / 2.23;
 				bool lane0_free = true;
 				for (int i=0; i< sensor_fusion.size(); i++)
 				{
@@ -321,41 +331,43 @@ int main() {
 
 					if (d < (2+4*0 +2) && d > (2+4*0-2)) // cars on left lane
 					{
-						if ((check_car_s > car_s-7) && (check_car_s < car_s+4))
+						if ((check_car_s > car_s-safe_distance) && (check_car_s < car_s+safe_distance))
 						{
 							lane0_free = false;
 						}
-						else if ((check_car_s > car_s+2) && (check_car_s < car_s+60) && (check_speed < lane0_speed))
+						else if ((check_car_s >= car_s+safe_distance) && (check_car_s < car_s+60) && (check_speed < lane0_speed))
 						{
 							lane0_speed = check_speed;
-							cout << "lane 0 speed: " << lane0_speed<<"\n";
 						}
 					}
 					else if (d < (2+4*1 +2) && d > (2+4*1-2)) // cars on middle lane
 					{
-						if ((check_car_s > car_s-7) && (check_car_s < car_s+4))
+						if ((check_car_s > car_s-safe_distance) && (check_car_s < car_s+safe_distance))
 						{
 							lane1_free = false;
 						}
-						else if ((check_car_s > car_s+2) && (check_car_s < car_s+60) && (check_speed < lane1_speed))
+						else if ((check_car_s >= car_s+safe_distance) && (check_car_s < car_s+60) && (check_speed < lane1_speed))
 						{
 							lane1_speed = check_speed;
-							cout << "lane 1 speed: " << lane1_speed<<"\n";
 						}
 					}
 					else if (d < (2+4*2 +2) && d > (2+4*2-2)) // cars on right lane
 					{
-						if ((check_car_s > car_s-7) && (check_car_s < car_s+4))
+						if ((check_car_s > car_s-safe_distance) && (check_car_s < car_s+safe_distance))
 						{
 							lane2_free = false;
 						}
-						else if ((check_car_s > car_s+5) && (check_car_s < car_s+60) && (check_speed < lane2_speed))
+						else if ((check_car_s >= car_s+safe_distance) && (check_car_s < car_s+60) && (check_speed < lane2_speed))
 						{
 							lane2_speed = check_speed;
-							cout << "lane 2 speed: " << lane2_speed<<"\n";
 						}
 					}
 				}
+				cout << "lane 0 speed: " << lane0_speed*2.23<<"\n";
+				cout << "lane 1 speed: " << lane1_speed*2.23<<"\n";
+				cout << "lane 2 speed: " << lane2_speed*2.23<<"\n";
+				
+				// make a passing decision according to our current lane
 				if (lane == 0)
 				{
 					if (((lane1_speed > lane0_speed) || ((lane2_speed > lane0_speed) && (lane2_free))) && (lane1_free))
